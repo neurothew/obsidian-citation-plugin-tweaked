@@ -12,9 +12,64 @@ export interface IIndexable {
 const databaseTypes = ['csl-json', 'biblatex'] as const;
 export type DatabaseType = typeof databaseTypes[number];
 
+const ENTRY_TYPE_LABELS: Record<string, string> = {
+  article: 'Journal Article',
+  'article-journal': 'Journal Article',
+  'article-magazine': 'Magazine Article',
+  'article-newspaper': 'Newspaper Article',
+  book: 'Book',
+  chapter: 'Book Section',
+  collection: 'Edited Book',
+  inbook: 'Book Section',
+  incollection: 'Book Section',
+  inproceedings: 'Conference Paper',
+  manuscript: 'Manuscript',
+  misc: 'Miscellaneous',
+  online: 'Web Page',
+  paper: 'Conference Paper',
+  'paper-conference': 'Conference Paper',
+  phdthesis: 'Thesis',
+  preprint: 'Preprint',
+  proceedings: 'Conference Proceedings',
+  report: 'Report',
+  techreport: 'Report',
+  thesis: 'Thesis',
+  unpublished: 'Manuscript',
+  webpage: 'Web Page',
+};
+
+const PREPRINT_MARKER_RE = /\b(arxiv|bio\s*rxiv|biorxiv|med\s*rxiv|medrxiv|psyarxiv|preprint)\b/i;
+
+function firstFieldValue(value?: string | string[]): string {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function hasPreprintMarker(...values: Array<string | string[]>): boolean {
+  return values
+    .map(firstFieldValue)
+    .some((value) => value && PREPRINT_MARKER_RE.test(value));
+}
+
+function labelForEntryType(type: string): string {
+  return ENTRY_TYPE_LABELS[type] || type;
+}
+
+function normalizeRepositoryName(rawRepository?: string): string {
+  if (!rawRepository) return null;
+
+  const compact = rawRepository.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (compact === 'arxiv') return 'arXiv';
+  if (compact === 'biorxiv') return 'bioRxiv';
+  if (compact === 'medrxiv') return 'medRxiv';
+  if (compact === 'psyarxiv') return 'PsyArXiv';
+
+  return rawRepository;
+}
+
 export const TEMPLATE_VARIABLES = {
   citekey: 'Unique citekey',
   abstract: '',
+  authors: 'List of author name objects with given and family fields',
   authorString: 'Comma-separated list of author names',
   containerTitle:
     'Title of the container holding the reference (e.g. book title for a book chapter, or the journal title for a journal article)',
@@ -22,12 +77,17 @@ export const TEMPLATE_VARIABLES = {
   eprint: '',
   eprinttype: '',
   eventPlace: 'Location of event',
+  itemType: 'Human-readable item type, such as Journal Article or Conference Paper',
   note: '',
   page: 'Page or page range',
   publisher: '',
   publisherPlace: 'Location of publisher',
+  repository: 'Preprint repository, such as arXiv, bioRxiv, or medRxiv',
   title: '',
   titleShort: '',
+  tags: 'Zotero tags/keywords as a list',
+  tagString: 'Comma-separated Zotero tags/keywords',
+  type: 'Entry type, such as article-journal, paper-conference, book, or chapter',
   URL: '',
   year: 'Publication year',
   zoteroSelectURI: 'URI to open the reference in Zotero',
@@ -50,18 +110,24 @@ export class Library {
       citekey: citekey,
 
       abstract: entry.abstract,
+      authors: entry.author,
       authorString: entry.authorString,
       containerTitle: entry.containerTitle,
       DOI: entry.DOI,
       eprint: entry.eprint,
       eprinttype: entry.eprinttype,
       eventPlace: entry.eventPlace,
+      itemType: entry.itemType,
       note: entry.note,
       page: entry.page,
       publisher: entry.publisher,
       publisherPlace: entry.publisherPlace,
+      repository: entry.repository,
       title: entry.title,
       titleShort: entry.titleShort,
+      tags: entry.tags,
+      tagString: entry.tagString,
+      type: entry.type,
       URL: entry.URL,
       year: entry.year?.toString(),
       zoteroSelectURI: entry.zoteroSelectURI,
@@ -119,6 +185,21 @@ export interface Author {
   family?: string;
 }
 
+function normalizeTags(rawTags?: string | string[]): string[] {
+  if (!rawTags) return null;
+
+  const values = Array.isArray(rawTags) ? rawTags : [rawTags];
+  const tags = values
+    .reduce((all: string[], value: string) => {
+      if (!value) return all;
+      return all.concat(value.split(','));
+    }, [])
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0);
+
+  return tags.length > 0 ? Array.from(new Set(tags)) : null;
+}
+
 /**
  * An `Entry` represents a single reference in a reference database.
  * Each entry has a unique identifier, known in most reference managers as its
@@ -131,6 +212,10 @@ export abstract class Entry {
   public abstract id: string;
 
   public abstract type: string;
+
+  public get itemType(): string {
+    return labelForEntryType(this.type);
+  }
 
   public abstract abstract?: string;
   public abstract author?: Author[];
@@ -162,6 +247,7 @@ export abstract class Entry {
    * Page or page range of the reference.
    */
   public abstract page?: string;
+  public abstract tags?: string[];
   public abstract title?: string;
   public abstract titleShort?: string;
   public abstract URL?: string;
@@ -170,6 +256,7 @@ export abstract class Entry {
 
   public abstract publisher?: string;
   public abstract publisherPlace?: string;
+  public abstract repository?: string;
 
   /**
    * BibLaTeX-specific properties
@@ -190,6 +277,10 @@ export abstract class Entry {
     return this._note
       ?.map((el) => el.replace(/(zotero:\/\/.+)/g, '[Link]($1)'))
       .join('\n\n');
+  }
+
+  public get tagString(): string {
+    return this.tags?.join(', ');
   }
 
   /**
@@ -237,6 +328,9 @@ export interface EntryDataCSL {
   page?: string;
   publisher?: string;
   'publisher-place'?: string;
+  genre?: string;
+  keyword?: string | string[];
+  source?: string;
   title?: string;
   'title-short'?: string;
   URL?: string;
@@ -251,11 +345,46 @@ export class EntryCSLAdapter extends Entry {
   eprinttype: string = null;
   files: string[] = null;
 
+  get repository() {
+    if (hasPreprintMarker(this.data.source)) {
+      return normalizeRepositoryName(this.data.source.replace(/\.org$/i, ''));
+    }
+    if (hasPreprintMarker(this.data.genre)) {
+      return normalizeRepositoryName(this.data.genre);
+    }
+    if (hasPreprintMarker(this.data['container-title'])) {
+      return normalizeRepositoryName(
+        this.data['container-title'].split(':')[0],
+      );
+    }
+    if (hasPreprintMarker(this.data.URL)) {
+      const match = this.data.URL.match(PREPRINT_MARKER_RE);
+      return normalizeRepositoryName(match?.[0]);
+    }
+
+    return null;
+  }
+
   get id() {
     return this.data.id;
   }
   get type() {
     return this.data.type;
+  }
+
+  get itemType(): string {
+    if (
+      hasPreprintMarker(
+        this.data.genre,
+        this.data.source,
+        this.data['container-title'],
+        this.data.URL,
+      )
+    ) {
+      return 'Preprint';
+    }
+
+    return labelForEntryType(this.type);
   }
 
   get abstract() {
@@ -272,7 +401,11 @@ export class EntryCSLAdapter extends Entry {
   }
 
   get containerTitle() {
-    return this.data['container-title'];
+    if (this.itemType === 'Preprint' && this.repository) {
+      return this.repository;
+    }
+
+    return this.data['container-title'] || this.repository;
   }
 
   get DOI() {
@@ -299,6 +432,10 @@ export class EntryCSLAdapter extends Entry {
 
   get page() {
     return this.data.page;
+  }
+
+  get tags() {
+    return normalizeTags(this.data.keyword);
   }
 
   get publisher() {
@@ -411,6 +548,25 @@ export class EntryBibLaTeXAdapter extends Entry {
     return this.data.type;
   }
 
+  get itemType(): string {
+    if (
+      ['online', 'misc', 'unpublished', 'preprint'].includes(this.type) &&
+      (this.eprint ||
+        hasPreprintMarker(
+          this.eprinttype,
+          this.data.fields.archiveprefix,
+          this.data.fields.archivePrefix,
+          this.data.fields.repository,
+          this.URL,
+          this.repository,
+        ))
+    ) {
+      return 'Preprint';
+    }
+
+    return labelForEntryType(this.type);
+  }
+
   get files(): string[] {
     // For some reason the bibtex parser doesn't reliably parse file list to
     // array ; so we'll do it manually / redundantly
@@ -423,6 +579,32 @@ export class EntryBibLaTeXAdapter extends Entry {
     }
 
     return ret;
+  }
+
+  get tags(): string[] {
+    return normalizeTags(
+      this.data.fields.keywords || this.data.fields.keyword,
+    );
+  }
+
+  get repository(): string {
+    const repository = firstFieldValue(this.data.fields.repository);
+    const archivePrefix =
+      firstFieldValue(this.data.fields.archiveprefix) ||
+      firstFieldValue(this.data.fields.archivePrefix);
+    const eprintType =
+      this.eprinttype || firstFieldValue(this.data.fields.eprinttype);
+    const source = repository || archivePrefix || eprintType;
+
+    if (hasPreprintMarker(source)) {
+      return normalizeRepositoryName(source);
+    }
+    if (hasPreprintMarker(this.URL)) {
+      const match = this.URL.match(PREPRINT_MARKER_RE);
+      return normalizeRepositoryName(match?.[0]);
+    }
+
+    return null;
   }
 
   get authorString() {
@@ -442,6 +624,8 @@ export class EntryBibLaTeXAdapter extends Entry {
   get containerTitle() {
     if (this._containerTitle) {
       return this._containerTitle;
+    } else if (this.repository) {
+      return this.repository;
     } else if (this.data.fields.eprint) {
       const prefix = this.data.fields.eprinttype
         ? `${this.data.fields.eprinttype}:`

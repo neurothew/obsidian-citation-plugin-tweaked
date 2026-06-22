@@ -15,7 +15,7 @@ import {
   loadEntries,
 } from '../types';
 
-const expectedRender: Record<string, string>[] = [
+const expectedRender: Record<string, any>[] = [
   {
     citekey: 'Weiner2003',
     abstract:
@@ -38,7 +38,7 @@ const expectedRender: Record<string, string>[] = [
       'In this paper, we define and apply representational stability analysis (ReStA), an intuitive way of analyzing neural language models. ReStA is a variant of the popular representational similarity analysis (RSA) in cognitive neuroscience. While RSA can be used to compare representations in models, model components, and human brains, ReStA compares instances of the same model, while systematically varying single model parameter. Using ReStA, we study four recent and successful neural language models, and evaluate how sensitive their internal representations are to the amount of prior context. Using RSA, we perform a systematic study of how similar the representational spaces in the first and second (or higher) layers of these models are to each other and to patterns of activation in the human brain. Our results reveal surprisingly strong differences between language models, and give insights into where the deep linguistic processing, that integrates information over multiple sentences, is happening in these models. The combination of ReStA and RSA on models and brains allows us to start addressing the important question of what kind of linguistic processes we can hope to observe in fMRI brain imaging data. In particular, our results suggest that the data on story reading from Wehbe et al. (2014) contains a signal of shallow linguistic processing, but show no evidence on the more interesting deep linguistic processing.',
     authorString:
       'Samira Abnar, Lisa Beinborn, Rochelle Choenni, Willem Zuidema',
-    containerTitle: 'arxiv:1906.01539 [cs, q-bio]',
+    containerTitle: 'arXiv',
     DOI: undefined,
     eprint: '1906.01539',
     eprinttype: 'arxiv',
@@ -46,6 +46,13 @@ const expectedRender: Record<string, string>[] = [
     title:
       'Blackbox meets blackbox: Representational Similarity and Stability Analysis of Neural Language Models and Brains',
     titleShort: "Blackbox meets blackbox",
+    tags: [
+      'Computer Science - Artificial Intelligence',
+      'Computer Science - Computation and Language',
+      'Quantitative Biology - Neurons and Cognition',
+    ],
+    tagString:
+      'Computer Science - Artificial Intelligence, Computer Science - Computation and Language, Quantitative Biology - Neurons and Cognition',
     URL: 'http://arxiv.org/abs/1906.01539',
     year: '2019',
     zoteroSelectURI: 'zotero://select/items/@abnar2019blackbox',
@@ -72,6 +79,8 @@ const expectedRender: Record<string, string>[] = [
     DOI: undefined,
     page: '1–4',
     title: 'Factored Neural Language Models',
+    tags: ['neural language models', 'neural networks', 'nlp', 'unknown words'],
+    tagString: 'neural language models, neural networks, nlp, unknown words',
     URL: 'http://aclasb.dfki.de/nlp/bib/N06-2001',
     year: '2006',
     zoteroSelectURI: 'zotero://select/items/@alexandrescu2006factored',
@@ -98,13 +107,20 @@ const expectedRender: Record<string, string>[] = [
  * Fields available only in the BibLaTeX format, and which shouldn't be checked
  * against CSL format
  */
-const BIBLATEX_FIELDS_ONLY = ['eprint', 'eprinttype', 'files', 'note'];
+const BIBLATEX_FIELDS_ONLY = [
+  'eprint',
+  'eprinttype',
+  'files',
+  'note',
+  'tags',
+  'tagString',
+];
 
 // Test whether loaded and expected libraries are the same, ignoring casing and
 // hyphenation and the `entry` field
 function matchLibraryRender(
   actual: Record<string, string>[],
-  expected: Record<string, string>[],
+  expected: Record<string, any>[],
   dropFields?: string[],
 ): void {
   const transform = (dict: Record<string, string>): Record<string, string> => {
@@ -186,6 +202,21 @@ describe('biblatex library', () => {
   test('advanced template render', () => {
     const render = renderAdvancedTemplate(loadLibrary, 'aitchison2017you');
     expect(render).toBe('[[Aitchison, Laurence]], [[Lengyel, Máté]]');
+  });
+  test('renders Zotero tags from BibLaTeX keywords', () => {
+    const library = loadLibrary();
+    const variables =
+      library.getTemplateVariablesForCitekey('alexandrescu2006factored');
+
+    expect(variables.tags).toEqual([
+      'neural language models',
+      'neural networks',
+      'nlp',
+      'unknown words',
+    ]);
+    expect(variables.tagString).toBe(
+      'neural language models, neural networks, nlp, unknown words',
+    );
   });
 });
 

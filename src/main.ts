@@ -12,6 +12,7 @@ import * as CodeMirror from 'codemirror';
 
 import {
   compile as compileTemplate,
+  registerHelper,
   TemplateDelegate as Template,
 } from 'handlebars';
 
@@ -40,6 +41,11 @@ import {
   WorkerManagerBlocked,
 } from './util';
 import LoadWorker from 'web-worker:./worker';
+
+function yamlScalar(value: unknown): string {
+  if (value === null || value === undefined) return '""';
+  return JSON.stringify(value.toString());
+}
 
 export default class CitationPlugin extends Plugin {
   settings: CitationsPluginSettings;
@@ -98,6 +104,7 @@ export default class CitationPlugin extends Plugin {
   }
 
   onload(): void {
+    registerHelper('yaml', yamlScalar);
     this.loadSettings().then(() => this.init());
   }
 

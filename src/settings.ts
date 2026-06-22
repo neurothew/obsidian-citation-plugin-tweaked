@@ -24,7 +24,11 @@ export class CitationsPluginSettings {
   literatureNoteContentTemplate: string =
     '---\n' +
     'title: {{title}}\n' +
-    'authors: {{authorString}}\n' +
+    'authors:\n' +
+    '{{#each authors}}\n' +
+    '  - family: "{{family}}"\n' +
+    '    given: "{{given}}"\n' +
+    '{{/each}}\n' +
     'year: {{year}}\n' +
     '---\n\n';
 
