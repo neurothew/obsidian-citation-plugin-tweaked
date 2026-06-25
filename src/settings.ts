@@ -23,14 +23,20 @@ export class CitationsPluginSettings {
   literatureNoteFolder = 'Reading notes';
   literatureNoteContentTemplate: string =
     '---\n' +
-    'title: {{title}}\n' +
+    'title: {{yaml title}}\n' +
+    'itemType: {{yaml itemType}}\n' +
+    'rawType: {{yaml type}}\n' +
+    'containerTitle: {{yaml containerTitle}}\n' +
     'authors:\n' +
     '{{#each authors}}\n' +
-    '  - family: "{{family}}"\n' +
-    '    given: "{{given}}"\n' +
+    '  - "{{given}} {{family}}"\n' +
     '{{/each}}\n' +
     'year: {{year}}\n' +
-    '---\n\n';
+    'tags:\n' +
+    '{{#each tags}}\n' +
+    '  - {{yaml this}}\n' +
+    '{{/each}}\n' +
+    '---\n';
 
   markdownCitationTemplate = '[@{{citekey}}]';
   alternativeMarkdownCitationTemplate = '@{{citekey}}';

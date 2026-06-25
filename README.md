@@ -1,68 +1,196 @@
-# obsidian-citation-plugin
+# Obsidian Citations Plugin Tweaked
 
-This plugin for [Obsidian](https://obsidian.md) integrates your academic reference manager with the Obsidian editing experience.
+This is a tweaked fork of Jon Gauthier's original [Obsidian Citations plugin](https://github.com/hans/obsidian-citation-plugin).
+
+The original plugin connects an exported Zotero bibliography to [Obsidian](https://obsidian.md), letting you search references, create literature notes, insert note links, and insert Markdown citations. This fork keeps that workflow but adds richer metadata support for generated literature notes, especially when using Zotero with [Better BibTeX][2].
 
 ![](screenshot.png)
 
-The plugin supports reading bibliographies in [BibTeX / BibLaTeX `.bib` format][4] and [CSL-JSON format][1].
+## What This Fork Adds
+
+This fork focuses on making literature-note frontmatter more useful and more structured:
+
+- Structured author lists via `{{authors}}`
+- Zotero/Better BibTeX tags via `{{tags}}` and `{{tagString}}`
+- Human-readable item types via `{{itemType}}`, such as `Journal Article`, `Conference Paper`, `Book`, and `Preprint`
+- Raw exported item type via `{{type}}`, such as `article-journal`, `paper-conference`, `book`, `inproceedings`, or `online`
+- Preprint repository detection via `{{repository}}`, such as `arXiv`, `bioRxiv`, and `medRxiv`
+- Better preprint handling for Better BibTeX exports where preprints may appear as `@online` entries with `eprinttype` or `archivePrefix`
+- YAML-safe template output via the `{{yaml ...}}` helper, which quotes values that would otherwise break Obsidian frontmatter
+- Local development helper scripts for rebuilding and installing a dev copy into a test vault
 
 ## Setup
 
-You can install this plugin via the Obsidian "Third-party plugin interface." It requires Obsidian 0.9.20 or higher.
+The plugin supports reading bibliographies in [BibTeX / BibLaTeX `.bib` format][4] and [CSL-JSON format][1].
 
-Once the plugin is installed, you must provide it with a bibliography file:
+For the richer metadata features in this fork, **Better BibLaTeX export is recommended**. CSL-JSON works, but it may omit Zotero tags or repository-specific fields depending on your export setup.
 
-- If you use **Zotero** with [Better BibTeX][2]:
-  - Select a collection in Zotero's left sidebar that you want to export.
-  - Click `File` -> `Export library ...`. Select `Better BibLaTeX` or `Better CSL JSON` as the format. (We recommend using the BibLaTeX export unless you experience performance issues. The BibLaTeX format includes more information that you can reference from Obsidian, such as associated PDF attachments, but loads more slowly than the JSON export.)
-  - You can optionally choose "Keep updated" to automatically re-export the collection -- this is recommended!
-- If you use other reference managers, check their documentation for BibLaTeX or CSL-JSON export support. We plan to officially support other managers in the future.
+If you use **Zotero** with [Better BibTeX][2]:
 
-Now open the Obsidian preferences and view the "Citations" tab. Paste the path to the exported file (`.bib` or `.json`, depending on the format you chose) in the text field labeled "Citation export path." After closing the settings dialog, you should now be able to search your references from within Obsidian!
+1. Select the Zotero collection you want to export.
+2. Click `File` -> `Export library ...`.
+3. Select `Better BibLaTeX` as the format.
+4. Enable `Keep updated` if you want Zotero to automatically refresh the export.
+5. In Obsidian, open the plugin settings and set the citation database path to the exported `.bib` file.
+
+If you use another reference manager, export to BibLaTeX or CSL-JSON and point the plugin to that file.
 
 ## Usage
 
-The plugin offers four simple features at the moment:
+The plugin offers four main commands:
 
-1. **Open literature note** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>): automatically create or open a literature note for a particular reference. The title, folder, and initial content of the note can be configured in the plugin settings.
-2. **Insert literature note reference** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>): insert a link to the literature note corresponding to a particular reference.
-3. **Insert literature note content in the current pane** (no hotkey by default): insert content describing a particular reference into the current pane. (This can be useful for updating literature notes you already have but which are missing reference information.)
-4. **Insert Markdown citation** (no hotkey by default): insert a [Pandoc-style citation][3] for a particular reference. (The exact format of the citation can be configured in the plugin settings.)
+1. **Open literature note** (`Ctrl` + `Shift` + `O`): create or open a literature note for a reference.
+2. **Insert literature note reference** (`Ctrl` + `Shift` + `E`): insert a link to the literature note for a reference.
+3. **Insert literature note content in the current pane**: insert generated reference metadata into the current note.
+4. **Insert Markdown citation**: insert a [Pandoc-style citation][3], configurable in settings.
 
-### Templates
-You can set up your own template for both the title and content of literature notes. The following variables can be used:
+## Literature Note Templates
 
-```
-* {{citekey}}
-* {{abstract}}
-* {{authorString}}
-* {{containerTitle}}
-* {{DOI}}
-* {{eprint}}
-* {{eprinttype}}
-* {{eventPlace}}
-* {{page}}
-* {{publisher}}
-* {{publisherPlace}}
-* {{title}}
-* {{titleShort}}
-* {{URL}}
-* {{year}}
-* {{zoteroSelectURI}}
-```
-For example, your literature note title template can simply be `@{{citekey}}` and the content template can look like:
-```
----
-title: {{title}}
-authors: {{authorString}}
-year: {{year}}
----
+You can configure both the literature note title and the initial note content in the plugin settings.
+
+### Common Variables
+
+These variables are available in templates:
+
+```handlebars
+{{citekey}}
 {{abstract}}
+{{authors}}
+{{authorString}}
+{{containerTitle}}
+{{DOI}}
+{{eprint}}
+{{eprinttype}}
+{{eventPlace}}
+{{itemType}}
+{{note}}
+{{page}}
+{{publisher}}
+{{publisherPlace}}
+{{repository}}
+{{tags}}
+{{tagString}}
+{{title}}
+{{titleShort}}
+{{type}}
+{{URL}}
+{{year}}
+{{zoteroSelectURI}}
 ```
+
+Advanced templates can also use:
+
+```handlebars
+{{entry}}
+```
+
+`{{entry}}` exposes the full internal representation of the parsed reference.
+
+### YAML-Safe Helper
+
+This fork adds a helper for frontmatter-safe output:
+
+```handlebars
+{{yaml title}}
+```
+
+Use this for fields that may contain colons, quotes, brackets, or other YAML-sensitive characters.
+
+For example, prefer:
+
+```yaml
+title: {{yaml title}}
+```
+
+instead of:
+
+```yaml
+title: {{title}}
+```
+
+### Example Literature Note Template
+
+```handlebars
+---
+title: {{yaml title}}
+itemType: {{yaml itemType}}
+rawType: {{yaml type}}
+containerTitle: {{yaml containerTitle}}
+authors:
+{{#each authors}}
+  - "{{given}} {{family}}"
+{{/each}}
+year: {{year}}
+tags:
+{{#each tags}}
+  - {{yaml this}}
+{{/each}}
+---
+```
+
+### Notes About Item Types
+
+Zotero item types are translated during export. For example, a Zotero `Conference Paper` may become a BibLaTeX `@inproceedings` entry.
+
+This fork exposes both forms:
+
+- `{{itemType}}`: human-readable label, such as `Conference Paper`
+- `{{type}}`: raw exported type, such as `inproceedings`
+
+Preprints may be exported as `@online` entries by Better BibTeX. This fork detects common preprint markers such as `arXiv`, `bioRxiv`, `medRxiv`, `eprinttype`, and `archivePrefix`, then exposes:
+
+```yaml
+itemType: "Preprint"
+repository: "arXiv"
+containerTitle: "arXiv"
+```
+
+## Local Development
+
+Install locked dependencies:
+
+```powershell
+npm ci --ignore-scripts
+```
+
+Run tests:
+
+```powershell
+npm test -- --runInBand
+```
+
+Build the plugin:
+
+```powershell
+npm run build
+```
+
+This fork also includes helper scripts used for local testing:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-deps.ps1
+powershell -ExecutionPolicy Bypass -File .\build-dev.ps1
+```
+
+The dev build script installs a separate development copy into the playground vault used during development.
+
+## Packaging
+
+To package a release for GitHub, build the plugin and upload these release assets:
+
+```text
+manifest.json
+main.js
+styles.css
+```
+
+Do not include `data.json`; that file contains user-specific plugin settings.
 
 ## License
 
 MIT License.
+
+This fork preserves the original plugin's license and attribution.
 
 ## Contributors
 
@@ -70,6 +198,7 @@ MIT License.
 - [raineszm](https://github.com/raineszm)
 - [Luke Murray](https://lukesmurray.com/)
 - [valmaev](https://github.com/valmaev)
+- Matthew King-Hang Ma ([neurothew](https://github.com/neurothew))
 
 [1]: https://github.com/citation-style-language/schema#csl-json-schema
 [2]: https://retorque.re/zotero-better-bibtex/
