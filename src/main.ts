@@ -2,6 +2,7 @@ import {
   FileSystemAdapter,
   MarkdownSourceView,
   MarkdownView,
+  Notice,
   normalizePath,
   Plugin,
   TFile,
@@ -18,6 +19,7 @@ import {
 
 
 import CitationEvents from './events';
+import { refreshTemplateFrontmatter } from './frontmatter';
 import {
   InsertCitationModal,
   InsertNoteLinkModal,
@@ -156,6 +158,14 @@ export default class CitationPlugin extends Plugin {
       hotkeys: [{ modifiers: ['Ctrl', 'Shift'], key: 'r' }],
       callback: () => {
         this.loadLibrary();
+      },
+    });
+
+    this.addCommand({
+      id: 'refresh-literature-note-metadata',
+      name: 'Refresh citation metadata in the current note',
+      callback: () => {
+        this.refreshActiveLiteratureNoteMetadata().catch(console.error);
       },
     });
 
@@ -327,6 +337,59 @@ export default class CitationPlugin extends Plugin {
     return this.literatureNoteContentTemplate(
       this.library.getTemplateVariablesForCitekey(citekey),
     );
+  }
+
+  private getCitekeyForLiteratureNote(file: TFile): string | null {
+    const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    const citekey = frontmatter?.citekey;
+    if (typeof citekey === 'string' && this.library.entries[citekey]) {
+      return citekey;
+    }
+
+    if (this.library.entries[file.basename]) return file.basename;
+
+    return (
+      Object.keys(this.library.entries).find(
+        (key) => normalizePath(this.getPathForCitekey(key)) === file.path,
+      ) ?? null
+    );
+  }
+
+  async refreshActiveLiteratureNoteMetadata(): Promise<void> {
+    const file = this.app.workspace.getActiveFile();
+    if (!file || file.extension !== 'md') {
+      new Notice('Open a Markdown literature note before refreshing metadata.');
+      return;
+    }
+
+    const library = await this.loadLibrary();
+    if (!library) {
+      new Notice('Citation data is still loading. Please try again in a moment.');
+      return;
+    }
+
+    const citekey = this.getCitekeyForLiteratureNote(file);
+    if (!citekey) {
+      new Notice(
+        'Cannot identify this note\'s citation. Name it with its citekey or add a citekey frontmatter field.',
+      );
+      return;
+    }
+
+    const existingContent = await this.app.vault.read(file);
+    const updatedContent = refreshTemplateFrontmatter(
+      existingContent,
+      this.getInitialContentForCitekey(citekey),
+    );
+    if (!updatedContent) {
+      new Notice(
+        'Cannot refresh metadata because this note or its template has no YAML frontmatter.',
+      );
+      return;
+    }
+
+    await this.app.vault.modify(file, updatedContent);
+    new Notice(`Refreshed citation metadata for ${citekey}.`);
   }
 
   getMarkdownCitationForCitekey(citekey: string): string {
